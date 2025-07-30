@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js';
 
 console.log("ENV SUPABASE_URL:", process.env.SUPABASE_URL);
