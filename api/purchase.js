@@ -1,4 +1,13 @@
 import 'dotenv/config'
+import fetch, { Request, Response } from 'node-fetch';
+
+// Polyfill для версальных функций
+if (!global.fetch) {
+  global.fetch   = fetch;
+  global.Request = Request;
+  global.Response = Response;
+}
+
 import { createClient } from '@supabase/supabase-js';
 
 console.log("ENV SUPABASE_URL:", process.env.SUPABASE_URL);
@@ -30,16 +39,6 @@ async function sendTelegramMessage(text) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-  const { clientId } = req.body;
-  if (!clientId) {
-    return res.status(400).json({ error: 'clientId is required' });
-  }
-
- export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -97,5 +96,4 @@ export default async function handler(req, res) {
     console.error(err);
     return res.status(500).json({ error: err.message });
   }
-}
 }
