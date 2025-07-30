@@ -60,47 +60,63 @@ export default async function handler(req, res) {
 
   // 3) Работа с Supabase и бонусная логика
   try {
-    // 3.1) Пытаемся инкрементить поле purchases
-    const { data: incRows, error: incErr } = await supabase
-      .from('clients')
-      .increment('purchases', 1)
-      .eq('id', clientId)
-      .select('*')
+    // 3.1) Читаем текущие покупки клиента
+const { data: existing, error: selectErr } = await supabase
+  .from('clients')
+  .select('purchases')
+  .eq('id', clientId)
+  .maybeSingle()
 
-    if (incErr) throw incErr
+if (selectErr) {
+  console.error('DB read error:', selectErr)
+  throw selectErr
+}
 
-    let purchases
-    if (incRows.length > 0) {
-      purchases = incRows[0].purchases
-    } else {
-      // 3.2) Если клиента нет — создаём с purchases = 1
-      const { data: insRows, error: insErr } = await supabase
-        .from('clients')
-        .insert({ id: clientId, purchases: 1 })
-        .select('*')
+let purchases
 
-      if (insErr) throw insErr
-      purchases = insRows[0].purchases
-    }
+if (existing) {
+  // 3.2) Обновляем счётчик на +1
+  purchases = existing.purchases + 1
+  const { error: updateErr } = await supabase
+    .from('clients')
+    .update({ purchases })
+    .eq('id', clientId)
 
-    // 3.3) Бонус при 7-м кофе
-    let bonus = false
-    if (purchases === 7) {
-      bonus = true
-      await supabase.from('notifications').insert({
-        client_id: clientId,
-        type: 'bonus_awarded'
-      })
-      await sendTelegramMessage(
-        `🎉 Клиент *${clientId}* получил 7-й кофе!`
-      )
-    }
+  if (updateErr) {
+    console.error('DB update error:', updateErr)
+    throw updateErr
+  }
 
-    return res.status(200).json({
-      purchases,
-      remaining: bonus ? 0 : 7 - purchases,
-      bonus
-    })
+} else {
+  // 3.3) Создаём новую запись с purchases = 1
+  purchases = 1
+  const { error: insertErr } = await supabase
+    .from('clients')
+    .insert({ id: clientId, purchases })
+
+  if (insertErr) {
+    console.error('DB insert error:', insertErr)
+    throw insertErr
+  }
+}
+
+// 3.4) Бонусная логика
+const bonus    = purchases === 7
+const remaining = bonus ? 0 : 7 - purchases
+
+if (bonus) {
+  await supabase.from('notifications').insert({
+    client_id: clientId,
+    type: 'bonus_awarded'
+  })
+  await sendTelegramMessage(
+    `🎉 Клиент *${clientId}* получил 7-й кофе!`
+  )
+}
+
+// 3.5) Возвращаем ответ
+return res.status(200).json({ purchases, remaining, bonus })
+
   } catch (err) {
     console.error('API /purchase error:', err)
     return res.status(500).json({ error: err.message })
