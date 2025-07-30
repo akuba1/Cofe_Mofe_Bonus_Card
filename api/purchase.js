@@ -31,14 +31,27 @@ async function sendTelegramMessage(text) {
 }
 
 export default async function handler(req, res) {
+  // 1) Метод разрешён только POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { clientId } = req.body;
+  // 2) Безопасно парсим тело
+  let clientId;
+  try {
+    // здесь может упасть parseBody, если JSON неверный
+    ({ clientId } = req.body);
+  } catch (parseErr) {
+    console.error('❌ Invalid JSON in request body:', parseErr);
+    return res.status(400).json({ error: 'Invalid JSON' });
+  }
+
+  // 3) Проверяем обязательное поле
   if (!clientId) {
     return res.status(400).json({ error: 'clientId is required' });
   }
+  // ... дальше ваша логика
+}
 
   try {
     let purchases;
