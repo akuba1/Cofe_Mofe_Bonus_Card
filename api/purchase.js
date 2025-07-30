@@ -39,18 +39,44 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'clientId is required' });
   }
 
+ export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  const { clientId } = req.body;
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId is required' });
+  }
+
   try {
-    const { data, error } = await supabase
+    let purchases;
+
+    // 1) Пытаемся обновить существующую запись
+    const { data: updatedRows, error: updateError } = await supabase
       .from('clients')
-      .upsert({ id: clientId }, { onConflict: 'id' })
+      .update({ /* при необходимости поля, например last_seen: new Date().toISOString() */ })
       .increment('purchases', 1)
-      .select()
-      .single();
-    if (error) throw error;
+      .eq('id', clientId)
+      .select();
 
-    const purchases = data.purchases;
+    if (updateError) throw updateError;
+
+    if (updatedRows && updatedRows.length > 0) {
+      // если запись есть — берем новое значение
+      purchases = updatedRows[0].purchases;
+    } else {
+      // 2) иначе вставляем новую строку с purchases = 1
+      const { data: insertedRows, error: insertError } = await supabase
+        .from('clients')
+        .insert({ id: clientId, purchases: 1 })
+        .select();
+
+      if (insertError) throw insertError;
+      purchases = insertedRows[0].purchases;
+    }
+    // Бонусная логика
     let bonus = false;
-
     if (purchases === 7) {
       bonus = true;
       await supabase.from('notifications').insert({
@@ -71,4 +97,5 @@ export default async function handler(req, res) {
     console.error(err);
     return res.status(500).json({ error: err.message });
   }
+}
 }
