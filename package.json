@@ -1,9 +1,11 @@
 {
-  "name": "my-vercel-app",
+  "name": "coffee-bonus",
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
     "dev": "vercel dev"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0"
+  }
 }
