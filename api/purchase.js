@@ -1,7 +1,7 @@
-import 'dotenv/config'
-import fetch, { Request, Response } from 'node-fetch';
+// pages/api/purchase.js
 
-// Polyfill для версальных функций
+import 'dotenv/config';
+import fetch, { Request, Response } from 'node-fetch';  
 if (!global.fetch) {
   global.fetch   = fetch;
   global.Request = Request;
@@ -9,14 +9,6 @@ if (!global.fetch) {
 }
 
 import { createClient } from '@supabase/supabase-js';
-
-console.log("ENV SUPABASE_URL:", process.env.SUPABASE_URL);
-console.log(
-  "ENV SUPABASE_ANON_KEY:",
-  process.env.SUPABASE_ANON_KEY
-    ? process.env.SUPABASE_ANON_KEY.slice(0, 10) + "..."
-    : undefined
-);
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -51,30 +43,29 @@ export default async function handler(req, res) {
   try {
     let purchases;
 
-    // 1) Пытаемся обновить существующую запись
-    const { data: updatedRows, error: updateError } = await supabase
+    // 1) Атомарный increment
+    const { data: incRows, error: incErr } = await supabase
       .from('clients')
-      .update({ /* при необходимости поля, например last_seen: new Date().toISOString() */ })
       .increment('purchases', 1)
       .eq('id', clientId)
       .select();
 
-    if (updateError) throw updateError;
+    if (incErr) throw incErr;
 
-    if (updatedRows && updatedRows.length > 0) {
-      // если запись есть — берем новое значение
-      purchases = updatedRows[0].purchases;
+    if (incRows.length > 0) {
+      purchases = incRows[0].purchases;
     } else {
-      // 2) иначе вставляем новую строку с purchases = 1
-      const { data: insertedRows, error: insertError } = await supabase
+      // 2) Новая запись для первого кофейного клиента
+      const { data: insRows, error: insErr } = await supabase
         .from('clients')
         .insert({ id: clientId, purchases: 1 })
         .select();
 
-      if (insertError) throw insertError;
-      purchases = insertedRows[0].purchases;
+      if (insErr) throw insErr;
+      purchases = insRows[0].purchases;
     }
-    // Бонусная логика
+
+    // 3) Бонусная логика
     let bonus = false;
     if (purchases === 7) {
       bonus = true;
@@ -82,9 +73,7 @@ export default async function handler(req, res) {
         client_id: clientId,
         type: 'bonus_awarded'
       });
-      await sendTelegramMessage(
-        `🎉 Клиент *${clientId}* получил 7-й кофе!`
-      );
+      await sendTelegramMessage(`🎉 Клиент *${clientId}* получил 7-й кофе!`);
     }
 
     return res.status(200).json({
@@ -92,8 +81,9 @@ export default async function handler(req, res) {
       remaining: bonus ? 0 : 7 - purchases,
       bonus
     });
+
   } catch (err) {
-    console.error(err);
+    console.error('API /purchase error:', err);
     return res.status(500).json({ error: err.message });
   }
 }
