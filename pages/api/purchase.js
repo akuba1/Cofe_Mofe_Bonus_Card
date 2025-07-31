@@ -33,9 +33,12 @@ async function sendTelegramMessage(text) {
 }
 
 export default async function handler(req, res) {
-  // 1) Отдаём 405, если не POST
+  // 1) Разрешаем только POST
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' })
+    res.setHeader('Allow', ['POST'])
+    return res
+      .status(405)
+      .json({ error: `Method ${req.method} Not Allowed` })
   }
 
   // 2) Берём тело запроса внутри try/catch
