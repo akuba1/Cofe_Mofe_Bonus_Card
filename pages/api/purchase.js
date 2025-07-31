@@ -1,19 +1,9 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 
-// Проверка env-переменных один раз при старте
-const {
-  SUPABASE_URL,
-  SUPABASE_ANON_KEY,
-  TELEGRAM_BOT_TOKEN,
-  TELEGRAM_CHAT_ID
-} = process.env
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error('Missing Supabase credentials in environment variables')
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+ const supabase = createClient(
+   process.env.NEXT_PUBLIC_SUPABASE_URL,
+   process.env.SUPABASE_SERVICE_ROLE_KEY)
 
 async function sendTelegramMessage(text) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return
@@ -33,7 +23,6 @@ async function sendTelegramMessage(text) {
 }
 
 export default async function handler(req, res) {
-  // 1) Разрешаем только POST
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
     return res
@@ -41,80 +30,67 @@ export default async function handler(req, res) {
       .json({ error: `Method ${req.method} Not Allowed` })
   }
 
-  // 2) Берём тело запроса внутри try/catch
-  let clientId
-  try {
-    ;({ clientId } = req.body)  // ; нужен, если предыдущий оператор не завершён
-  } catch (err) {
-    console.error('❌ Invalid JSON in request body:', err)
-    return res.status(400).json({ error: 'Invalid JSON' })
+  const { phone, name } = req.body
+  if (!phone || !/^\d{7,15}$/.test(phone)) {
+    return res.status(400).json({ error: 'Invalid phone' })
   }
 
-  if (!clientId) {
-    return res.status(400).json({ error: 'clientId is required' })
-  }
-
-  // 3) Работа с Supabase и бонусная логика
-  try {
-    // 3.1) Читаем текущие покупки клиента
-const { data: existing, error: selectErr } = await supabase
-  .from('clients')
-  .select('purchases')
-  .eq('id', clientId)
-  .maybeSingle()
-
-if (selectErr) {
-  console.error('DB read error:', selectErr)
-  throw selectErr
-}
-
-let purchases
-
-if (existing) {
-  // 3.2) Обновляем счётчик на +1
-  purchases = existing.purchases + 1
-  const { error: updateErr } = await supabase
+  // 1) Найти или создать клиента
+  let { data: client, error: clientErr } = await supabase
     .from('clients')
-    .update({ purchases })
-    .eq('id', clientId)
+    .select('id, name')
+    .eq('phone', phone)
+    .maybeSingle()
 
-  if (updateErr) {
-    console.error('DB update error:', updateErr)
-    throw updateErr
+  if (clientErr) return res.status(500).json({ error: clientErr.message })
+
+  if (!client) {
+    const { data, error: insertErr } = await supabase
+      .from('clients')
+      .insert({ phone, name })
+      .single()
+    if (insertErr) return res.status(500).json({ error: insertErr.message })
+    client = data
+  } else if (name && client.name !== name) {
+    // Обновим имя, если передано новое
+    await supabase
+      .from('clients')
+      .update({ name })
+      .eq('id', client.id)
   }
 
-} else {
-  // 3.3) Создаём новую запись с purchases = 1
-  purchases = 1
-  const { error: insertErr } = await supabase
-    .from('clients')
-    .insert({ id: clientId, purchases })
+  // 2) Вставить новую запись о покупке
+  const { error: purchaseErr } = await supabase
+    .from('purchases')
+    .insert({ client_id: client.id })
+  if (purchaseErr) return res.status(500).json({ error: purchaseErr.message })
 
-  if (insertErr) {
-    console.error('DB insert error:', insertErr)
-    throw insertErr
+  // 3) Считать покупки за последние 30 дней
+  const thirtyDaysAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString()
+  const { count, error: countErr } = await supabase
+    .from('purchases')
+    .select('id', { count: 'exact' })
+    .eq('client_id', client.id)
+    .gte('created_at', thirtyDaysAgo)
+  if (countErr) return res.status(500).json({ error: countErr.message })
+
+  const purchases = count
+  const THRESHOLD = 6
+  const hasBonus = purchases >= THRESHOLD
+  const remaining = hasBonus ? 0 : THRESHOLD - purchases
+
+  // 4) При достижении порога отправка Telegram-уведомления
+  if (hasBonus) {
+    // вставляем уведомление, сброса не делаем: клиент может продолжить копить
+    await supabase.from('notifications').insert({
+      client_id: client.id,
+      type: 'bonus_ready'
+    })
+    await sendTelegramMessage(
+      `🛎 Клиент "${client.phone}" (${client.name || 'no name'}) достиг ${THRESHOLD} покупок!`
+    )
   }
-}
 
-// 3.4) Бонусная логика
-const bonus    = purchases === 7
-const remaining = bonus ? 0 : 7 - purchases
-
-if (bonus) {
-  await supabase.from('notifications').insert({
-    client_id: clientId,
-    type: 'bonus_awarded'
-  })
-  await sendTelegramMessage(
-    `🎉 Клиент *${clientId}* заработал 7-й бонусный кофе!`
-  )
-}
-
-// 3.5) Возвращаем ответ
-return res.status(200).json({ purchases, remaining, bonus })
-
-  } catch (err) {
-    console.error('API /purchase error:', err)
-    return res.status(500).json({ error: err.message })
-  }
+  // 5) Отдаём результат клиенту
+  return res.status(200).json({ purchases, remaining, hasBonus })
 }
