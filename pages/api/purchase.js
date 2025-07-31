@@ -1,8 +1,6 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 
-
-
 // Проверка env-переменных один раз при старте
 const {
   SUPABASE_URL,
@@ -19,6 +17,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 async function sendTelegramMessage(text) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return
+  
   await fetch(
     `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
     {
@@ -104,7 +103,7 @@ if (bonus) {
     type: 'bonus_awarded'
   })
   await sendTelegramMessage(
-    `🎉 Клиент *${clientId}* получил 7-й кофе!`
+    `🎉 Клиент *${clientId}* заработал 7-й бонусный кофе!`
   )
 }
 
