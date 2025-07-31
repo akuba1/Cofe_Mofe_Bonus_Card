@@ -25,7 +25,7 @@ async function sendTelegramMessage(text) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
-    return res.status(405).json({ error: 'Method Not Allowed' })
+    return res.status(405).end()
   }
 
   const { phone, name } = req.body
@@ -33,26 +33,46 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Phone is required' })
   }
 
-  let { data: client, error: clientErr } = await supabase
+  // Получаем или создаём клиента
+  const { data: existingClient, error: selectErr } = await supabase
     .from('clients')
     .select('id, name')
     .eq('phone', phone)
     .maybeSingle()
-  if (clientErr) return res.status(500).json({ error: clientErr.message })
 
+  if (selectErr) {
+    console.error(selectErr)
+    return res.status(500).json({ error: selectErr.message })
+  }
+
+  let client = existingClient
   if (!client) {
-    const { data: newClient, error: insertClientErr } = await supabase
+    const { data: newClient, error: insertErr } = await supabase
       .from('clients')
       .insert({ phone, name })
       .single()
-    if (insertClientErr) return res.status(500).json({ error: insertClientErr.message })
+    if (insertErr) {
+      console.error(insertErr)
+      return res.status(500).json({ error: insertErr.message })
+    }
     client = newClient
   }
 
+  // Гарантированно есть client.id
+  if (!client.id) {
+    return res.status(500).json({ error: 'Client ID missing' })
+  }
+
+  // Вставляем покупку
   const { error: purchaseErr } = await supabase
     .from('purchases')
     .insert({ client_id: client.id })
-  if (purchaseErr) return res.status(500).json({ error: purchaseErr.message })
+
+  if (purchaseErr) {
+    console.error(purchaseErr)
+    return res.status(500).json({ error: purchaseErr.message })
+  }
+
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const { count, error: countErr } = await supabase
