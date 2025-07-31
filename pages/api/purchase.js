@@ -33,34 +33,16 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Phone is required' })
   }
 
-  // Получаем или создаём клиента
-  const { data: existingClient, error: selectErr } = await supabase
+  // 1) upsert: вставляем или обновляем клиента по phone и сразу получаем id
+  const { data: client, error: upsertErr } = await supabase
     .from('clients')
+    .upsert({ phone, name }, { onConflict: 'phone' })
     .select('id, name')
-    .eq('phone', phone)
-    .maybeSingle()
+    .single()
 
-  if (selectErr) {
-    console.error(selectErr)
-    return res.status(500).json({ error: selectErr.message })
-  }
-
-  let client = existingClient
-  if (!client) {
-    const { data: newClient, error: insertErr } = await supabase
-      .from('clients')
-      .insert({ phone, name })
-      .single()
-    if (insertErr) {
-      console.error(insertErr)
-      return res.status(500).json({ error: insertErr.message })
-    }
-    client = newClient
-  }
-
-  // Гарантированно есть client.id
-  if (!client.id) {
-    return res.status(500).json({ error: 'Client ID missing' })
+  if (upsertErr) {
+    console.error('Upsert client error:', upsertErr)
+    return res.status(500).json({ error: upsertErr.message })
   }
 
   // Вставляем покупку
@@ -72,7 +54,6 @@ export default async function handler(req, res) {
     console.error(purchaseErr)
     return res.status(500).json({ error: purchaseErr.message })
   }
-
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const { count, error: countErr } = await supabase
