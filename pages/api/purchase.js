@@ -1,13 +1,7 @@
 import 'dotenv/config'
-import fetch, { Request, Response } from 'node-fetch'
 import { createClient } from '@supabase/supabase-js'
 
-// Подъём fetch в глобальный контекст (если Next.js не предоставляет его)
-if (!global.fetch) {
-  global.fetch   = fetch
-  global.Request = Request
-  global.Response = Response
-}
+
 
 // Проверка env-переменных один раз при старте
 const {
