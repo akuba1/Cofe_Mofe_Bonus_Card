@@ -1,14 +1,13 @@
-// pages/index.js
 import { useState } from 'react'
 
 export default function Home() {
   const [phone, setPhone] = useState('')
-  const [name, setName] = useState('')
+  const [name, setName]   = useState('')
   const [status, setStatus] = useState(null)
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError]   = useState('')
 
-  const submit = async e => {
+  const handleSubmit = async e => {
     e.preventDefault()
     setError('')
     setLoading(true)
@@ -19,7 +18,7 @@ export default function Home() {
         body: JSON.stringify({ phone, name })
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Unknown error')
+      if (!res.ok) throw new Error(json.error || 'Error')
       setStatus(json)
     } catch (err) {
       setError(err.message)
@@ -28,65 +27,42 @@ export default function Home() {
     }
   }
 
-  // Если пришёл статус, показываем результат
   if (status) {
     return (
-      <main style={{ padding: 20, maxWidth: 400, margin: 'auto' }}>
+      <main style={{ padding: 16 }}>
         <h1>Ваш бонус-статус</h1>
-        <p>Вы купили <strong>{status.purchases}</strong> кофе</p>
-        <p>До бонуса осталось <strong>{status.remaining}</strong></p>
-        {status.hasBonus && (
-          <div style={{ background: '#e0ffe0', padding: 12, margin: '16px 0' }}>
-            🎉 Вы заработали бонусный кофе!
-          </div>
-        )}
-        <button onClick={() => window.location.reload()}>
-          Отметить ещё раз
-        </button>
+        <p>Клиент: {status.name || status.phone}</p>
+        <p>Покупок: {status.purchases}</p>
+        <p>До бонуса осталось: {status.remaining}</p>
+        {status.hasBonus && <p>🎉 Бонусный кофе готов!</p>}
+        <button onClick={() => window.location.reload()}>Новая отметка</button>
       </main>
     )
   }
 
-  // Иначе — правила + форма
   return (
-    <main style={{ padding: 20, maxWidth: 400, margin: 'auto' }}>
+    <main style={{ padding: 16 }}>
       <h1>Программа лояльности</h1>
-      <ol>
-        <li>В течение 30 дней совершите 6 покупок.</li>
-        <li>Каждая покупка отмечается вводом номера и имени.</li>
-        <li>За 6-ю покупку кофе вы получаете бонус.</li>
-      </ol>
-      <form onSubmit={submit} style={{ marginTop: 20 }}>
-        <label>
-          Телефон
-          <input
-            type="tel"
-            value={phone}
-            onChange={e => setPhone(e.target.value)}
-            required
-            style={{ width: '100%', padding: 8, marginTop: 6 }}
-          />
-        </label>
-        <label style={{ display: 'block', marginTop: 12 }}>
-          Имя (необязательно)
-          <input
-            type="text"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            style={{ width: '100%', padding: 8 }}
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ marginTop: 16, padding: '8px 16px' }}
-        >
+      <p>Совершите 6 покупок в течение 30 дней и получите бонусный кофе.</p>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="tel"
+          placeholder="Введите телефон"
+          value={phone}
+          onChange={e => setPhone(e.target.value)}
+          required
+        />
+        <input
+          type="text"
+          placeholder="Введите имя (необязательно)"
+          value={name}
+          onChange={e => setName(e.target.value)}
+        />
+        <button type="submit" disabled={loading}>
           {loading ? 'Отмечаем…' : 'Отметить покупку'}
         </button>
-        {error && (
-          <p style={{ color: 'red', marginTop: 12 }}>Ошибка: {error}</p>
-        )}
       </form>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
     </main>
-  )
+)
 }
