@@ -1,6 +1,0 @@
-{
-  "compilerOptions": {
-    // ... ваши другие опции
-    "forceConsistentCasingInFileNames": false
-  }
-}

@@ -1,25 +1,42 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/router'
 
 export default function Home() {
-  const [phone, setPhone] = useState('')
-  const [name, setName]   = useState('')
-  const [status, setStatus] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]   = useState('')
+  const { query } = useRouter()
+  const [client, setClient]     = useState(null)
+  const [quantity, setQuantity] = useState(1)
+  const [message, setMessage]   = useState('')
+  const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
 
-  const handleSubmit = async e => {
+  // 1) При заходе из QR (…?clientId=xxx) — забираем клиента
+  useEffect(() => {
+    if (!query.clientId) return
+    fetch(`/api/client/${query.clientId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error)
+        setClient(data)
+      })
+      .catch(err => setError(err.message))
+  }, [query.clientId])
+
+  // 2) Отправляем заявку
+  async function handleSubmit(e) {
     e.preventDefault()
-    setError('')
     setLoading(true)
+    setError('')
+    setMessage('')
+
     try {
       const res = await fetch('/api/purchase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, name })
+        body: JSON.stringify({ clientId: client.id, quantity })
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Error')
-      setStatus(json)
+      if (!res.ok) throw new Error(json.error)
+      setMessage(`Заявка принята: ${quantity} кофе. Ожидает подтверждения.`)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -27,42 +44,29 @@ export default function Home() {
     }
   }
 
-  if (status) {
-    return (
-      <main style={{ padding: 16 }}>
-        <h1>Ваш бонус-статус</h1>
-        <p>Клиент: {status.name || status.phone}</p>
-        <p>Покупок: {status.purchases}</p>
-        <p>До бонуса осталось: {status.remaining}</p>
-        {status.hasBonus && <p>🎉 Бонусный кофе готов!</p>}
-        <button onClick={() => window.location.reload()}>Новая отметка</button>
-      </main>
-    )
-  }
+  if (error) return <p style={{ color: 'red' }}>Ошибка: {error}</p>
+  if (!client) return <p>Загрузка клиента…</p>
 
   return (
-    <main style={{ padding: 16 }}>
-      <h1>Программа лояльности</h1>
-      <p>Совершите 6 покупок в течение 30 дней и получите бонусный кофе.</p>
+    <main style={{ maxWidth: 400, margin: 'auto', padding: 20 }}>
+      <h1>Привет, {client.name || client.id}!</h1>
       <form onSubmit={handleSubmit}>
-        <input
-          type="tel"
-          placeholder="Введите телефон"
-          value={phone}
-          onChange={e => setPhone(e.target.value)}
-          required
-        />
-        <input
-          type="text"
-          placeholder="Введите имя (необязательно)"
-          value={name}
-          onChange={e => setName(e.target.value)}
-        />
-        <button type="submit" disabled={loading}>
-          {loading ? 'Отмечаем…' : 'Отметить покупку'}
+        <label>
+          Количество кофе:
+          <input
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={e => setQuantity(+e.target.value)}
+            style={{ width: 60, marginLeft: 8 }}
+          />
+        </label>
+        <button disabled={loading} style={{ marginLeft: 12 }}>
+          {loading ? '…' : 'Отправить'}
         </button>
       </form>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {message && <p style={{ color: 'green' }}>{message}</p>}
     </main>
-)
+  )
 }
+
