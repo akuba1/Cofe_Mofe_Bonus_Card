@@ -1,32 +1,75 @@
-import { useEffect, useState } from 'react'
+// pages/index.js
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 
 export default function Home() {
-  const { query } = useRouter()
-  const [client, setClient]     = useState(null)
+  const router = useRouter()
+  const { clientId: urlClientId } = router.query
+
+  // UI‐состояния
+  const [phase, setPhase] = useState(
+    urlClientId ? 'loadingClient' : 'initRegistration'
+  )
+  const [phone, setPhone]     = useState('')
+  const [name, setName]       = useState('')
+  const [client, setClient]   = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [message, setMessage]   = useState('')
-  const [error, setError]       = useState('')
+  const [error, setError]     = useState('')
   const [loading, setLoading]   = useState(false)
 
-  // 1) При заходе из QR (…?clientId=xxx) — забираем клиента
+  // 1) Если URL содержит clientId, подгружаем данные клиента
   useEffect(() => {
-    if (!query.clientId) return
-    fetch(`/api/client/${query.clientId}`)
+    if (phase !== 'loadingClient' || !urlClientId) return
+
+    fetch(`/api/client/${urlClientId}`)
       .then(r => r.json())
       .then(data => {
         if (data.error) throw new Error(data.error)
-        setClient(data)
+        setClient(data)           // { id, name, phone }
+        setPhase('purchase')      // переходим к отметке покупки
       })
-      .catch(err => setError(err.message))
-  }, [query.clientId])
+      .catch(err => {
+        console.error(err)
+        setError('Не удалось загрузить клиента')
+        setPhase('initRegistration')
+      })
+  }, [phase, urlClientId])
 
-  // 2) Отправляем заявку
-  async function handleSubmit(e) {
+  // 2) Регистрация или получение существующего клиента
+  async function handleRegister(e) {
     e.preventDefault()
+    setError('')
     setLoading(true)
+
+    try {
+      // upsert клиент по телефону + имени
+      const res = await fetch('/api/client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, name })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      
+      // мы получили { id, name, phone }
+      setClient(data)
+      // обновляем URL без перезагрузки, чтобы можно было шарить ссылку
+      router.replace(`/?clientId=${data.id}`, undefined, { shallow: true })
+      setPhase('purchase')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 3) Отметка покупки
+  async function handlePurchase(e) {
+    e.preventDefault()
     setError('')
     setMessage('')
+    setLoading(true)
 
     try {
       const res = await fetch('/api/purchase', {
@@ -36,7 +79,10 @@ export default function Home() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setMessage(`Заявка принята: ${quantity} кофе. Ожидает подтверждения.`)
+
+      setMessage(
+        `Заявка принята: ${quantity} чашка(чашек). Ожидает подтверждения бариста.`
+      )
     } catch (err) {
       setError(err.message)
     } finally {
@@ -44,29 +90,79 @@ export default function Home() {
     }
   }
 
-  if (error) return <p style={{ color: 'red' }}>Ошибка: {error}</p>
-  if (!client) return <p>Загрузка клиента…</p>
+  // Визуализация состояний
+  if (error) {
+    return <p style={{ color: 'red', padding: 20 }}>Ошибка: {error}</p>
+  }
 
-  return (
-    <main style={{ maxWidth: 400, margin: 'auto', padding: 20 }}>
-      <h1>Привет, {client.name || client.id}!</h1>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Количество кофе:
+  // Этап регистрации / ввода данных
+  if (phase === 'initRegistration') {
+    return (
+      <main style={{ padding: 20, maxWidth: 400, margin: 'auto' }}>
+        <h1>Добро пожаловать!</h1>
+        <p>Введите номер телефона и имя для регистрации или поиска профиля.</p>
+
+        <form onSubmit={handleRegister}>
+          <label>
+            Телефон
+            <input
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              required
+              style={{ width: '100%', padding: 8, margin: '8px 0' }}
+            />
+          </label>
+
+          <label>
+            Имя (необязательно)
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              style={{ width: '100%', padding: 8, margin: '8px 0' }}
+            />
+          </label>
+
+          <button type="submit" disabled={loading}>
+            {loading ? 'Регистрация…' : 'Зарегистрироваться'}
+          </button>
+        </form>
+      </main>
+    )
+  }
+
+  // Этап загрузки клиента по URL
+  if (phase === 'loadingClient') {
+    return <p style={{ padding: 20 }}>Загрузка клиента…</p>
+  }
+
+  // Этап отметки покупки
+  if (phase === 'purchase' && client) {
+    return (
+      <main style={{ padding: 20, maxWidth: 400, margin: 'auto' }}>
+        <h1>Привет, {client.name || client.phone}!</h1>
+        <p>Сколько чашек вы хотите отметить?</p>
+        <form onSubmit={handlePurchase}>
           <input
             type="number"
             min="1"
             value={quantity}
             onChange={e => setQuantity(+e.target.value)}
-            style={{ width: 60, marginLeft: 8 }}
+            style={{ width: 60, marginRight: 12 }}
           />
-        </label>
-        <button disabled={loading} style={{ marginLeft: 12 }}>
-          {loading ? '…' : 'Отправить'}
-        </button>
-      </form>
-      {message && <p style={{ color: 'green' }}>{message}</p>}
-    </main>
-  )
-}
+          <button disabled={loading}>
+            {loading ? 'Отправка…' : 'Отметить покупку'}
+          </button>
+        </form>
 
+        {message && (
+          <p style={{ color: 'green', marginTop: 12 }}>{message}</p>
+        )}
+      </main>
+    )
+  }
+
+  // На всякий случай
+  return null
+}
