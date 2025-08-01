@@ -2,6 +2,12 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 
+// Инициализируем сервисный клиент Supabase
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,        // или SUPABASE_URL
+  process.env.SUPABASE_SERVICE_ROLE_KEY        // service role key
+)
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
