@@ -6,44 +6,42 @@ export default function Home() {
   const router = useRouter()
   const { clientId: urlClientId } = router.query
 
-  // UI‐состояния
-  const [phase, setPhase] = useState(
-    urlClientId ? 'loadingClient' : 'initRegistration'
-  )
-  const [phone, setPhone]     = useState('')
-  const [name, setName]       = useState('')
-  const [client, setClient]   = useState(null)
+  const [phase, setPhase] = useState('initRegistration')
+  const [phone, setPhone] = useState('')
+  const [name, setName] = useState('')
+  const [client, setClient] = useState(null)
   const [quantity, setQuantity] = useState(1)
-  const [message, setMessage]   = useState('')
-  const [error, setError]     = useState('')
-  const [loading, setLoading]   = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  // 1) Если URL содержит clientId, подгружаем данные клиента
+  // Определяем фазу при готовности роутера
+  useEffect(() => {
+    if (!router.isReady) return
+    setPhase(urlClientId ? 'loadingClient' : 'initRegistration')
+  }, [router.isReady, urlClientId])
+
+  // Загрузка профиля клиента по clientId из URL
   useEffect(() => {
     if (phase !== 'loadingClient' || !urlClientId) return
-
     fetch(`/api/client/${urlClientId}`)
-      .then(r => r.json())
+      .then(res => res.json())
       .then(data => {
         if (data.error) throw new Error(data.error)
-        setClient(data)           // { id, name, phone }
-        setPhase('purchase')      // переходим к отметке покупки
+        setClient(data)
+        setPhase('purchase')
       })
-      .catch(err => {
-        console.error(err)
+      .catch(() => {
         setError('Не удалось загрузить клиента')
         setPhase('initRegistration')
       })
   }, [phase, urlClientId])
 
-  // 2) Регистрация или получение существующего клиента
+  // Регистрация/поиск клиента
   async function handleRegister(e) {
     e.preventDefault()
-    setError('')
-    setLoading(true)
-
+    setError(''); setLoading(true)
     try {
-      // upsert клиент по телефону + имени
       const res = await fetch('/api/client', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -51,12 +49,9 @@ export default function Home() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      
-      // мы получили { id, name, phone }
       setClient(data)
-      // обновляем URL без перезагрузки, чтобы можно было шарить ссылку
-      router.replace(`/?clientId=${data.id}`, undefined, { shallow: true })
       setPhase('purchase')
+      router.replace(`/?clientId=${data.id}`, undefined, { shallow: true })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -64,13 +59,10 @@ export default function Home() {
     }
   }
 
-  // 3) Отметка покупки
+  // Создание заявки на покупку
   async function handlePurchase(e) {
     e.preventDefault()
-    setError('')
-    setMessage('')
-    setLoading(true)
-
+    setError(''); setMessage(''); setLoading(true)
     try {
       const res = await fetch('/api/purchase', {
         method: 'POST',
@@ -79,10 +71,7 @@ export default function Home() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-
-      setMessage(
-        `Заявка принята: ${quantity} чашка(чашек). Ожидает подтверждения бариста.`
-      )
+      setMessage(`Заявка принята: ${quantity} чашек.`)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -90,79 +79,54 @@ export default function Home() {
     }
   }
 
-  // Визуализация состояний
-  if (error) {
-    return <p style={{ color: 'red', padding: 20 }}>Ошибка: {error}</p>
-  }
-
-  // Этап регистрации / ввода данных
+  // Рендер по фазе
+  if (error) return <p style={{ color: 'red' }}>Ошибка: {error}</p>
   if (phase === 'initRegistration') {
     return (
-      <main style={{ padding: 20, maxWidth: 400, margin: 'auto' }}>
-        <h1>Добро пожаловать!</h1>
-        <p>Введите номер телефона и имя для регистрации или поиска профиля.</p>
-
+      <main style={{ padding: 20 }}>
+        <h1>Регистрация клиента</h1>
         <form onSubmit={handleRegister}>
-          <label>
-            Телефон
-            <input
-              type="tel"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              required
-              style={{ width: '100%', padding: 8, margin: '8px 0' }}
-            />
-          </label>
-
-          <label>
-            Имя (необязательно)
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              style={{ width: '100%', padding: 8, margin: '8px 0' }}
-            />
-          </label>
-
-          <button type="submit" disabled={loading}>
-            {loading ? 'Регистрация…' : 'Зарегистрироваться'}
+          <input
+            type="tel"
+            placeholder="Телефон"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Имя (необязательно)"
+            value={name}
+            onChange={e => setName(e.target.value)}
+          />
+          <button disabled={loading}>
+            {loading ? '...' : 'Зарегистрироваться'}
           </button>
         </form>
       </main>
     )
   }
-
-  // Этап загрузки клиента по URL
   if (phase === 'loadingClient') {
-    return <p style={{ padding: 20 }}>Загрузка клиента…</p>
+    return <p>Загрузка клиента…</p>
   }
-
-  // Этап отметки покупки
   if (phase === 'purchase' && client) {
     return (
-      <main style={{ padding: 20, maxWidth: 400, margin: 'auto' }}>
+      <main style={{ padding: 20 }}>
         <h1>Привет, {client.name || client.phone}!</h1>
-        <p>Сколько чашек вы хотите отметить?</p>
         <form onSubmit={handlePurchase}>
           <input
             type="number"
             min="1"
             value={quantity}
             onChange={e => setQuantity(+e.target.value)}
-            style={{ width: 60, marginRight: 12 }}
           />
           <button disabled={loading}>
-            {loading ? 'Отправка…' : 'Отметить покупку'}
+            {loading ? '...' : 'Отметить покупку'}
           </button>
         </form>
-
-        {message && (
-          <p style={{ color: 'green', marginTop: 12 }}>{message}</p>
-        )}
+        {message && <p style={{ color: 'green' }}>{message}</p>}
       </main>
     )
   }
-
-  // На всякий случай
   return null
 }
